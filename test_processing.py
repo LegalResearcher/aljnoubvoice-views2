@@ -46,6 +46,22 @@ class BatchProcessingTests(unittest.TestCase):
         self.assertEqual(sender.calls, batch)
         self.assertEqual(main.read_lines(main.LINKS_PATH), [])
 
+    def test_main_processes_existing_queue_before_fetching_new_posts(self):
+        pending = [
+            "https://t.me/aljnoubvoice/9086",
+            "https://t.me/aljnoubvoice/9089",
+        ]
+        accounts = [(number, f"u{number}", f"p{number}") for number in range(1, 6)]
+        main.write_lines(main.LINKS_PATH, pending)
+
+        with patch.object(main, "load_accounts", return_value=accounts), \
+                patch.object(main, "run_all_accounts", return_value=0) as run_all, \
+                patch.object(main, "pull_once") as pull_once:
+            self.assertEqual(main.main(), 0)
+
+        run_all.assert_called_once_with(pending, accounts, state_dir=main.STATE_DIR)
+        pull_once.assert_not_called()
+
     def test_next_run_processes_only_new_links_not_previous_batch(self):
         first = ["https://t.me/aljnoubvoice/1", "https://t.me/aljnoubvoice/2"]
         second = ["https://t.me/aljnoubvoice/3", "https://t.me/aljnoubvoice/4"]
