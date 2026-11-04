@@ -38,7 +38,7 @@ class BatchProcessingTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_first_run_processes_all_new_links_once(self):
-        batch = [f"https://t.me/hasadalyoum/{number}" for number in range(1, 8)]
+        batch = [f"https://t.me/aljnoubvoice/{number}" for number in range(1, 8)]
         with patch.object(main, "fetch_links", return_value=batch):
             selected = main.pull_once()
         sender = FakeSender()
@@ -47,8 +47,8 @@ class BatchProcessingTests(unittest.TestCase):
         self.assertEqual(main.read_lines(main.LINKS_PATH), [])
 
     def test_next_run_processes_only_new_links_not_previous_batch(self):
-        first = ["https://t.me/hasadalyoum/1", "https://t.me/hasadalyoum/2"]
-        second = ["https://t.me/hasadalyoum/3", "https://t.me/hasadalyoum/4"]
+        first = ["https://t.me/aljnoubvoice/1", "https://t.me/aljnoubvoice/2"]
+        second = ["https://t.me/aljnoubvoice/3", "https://t.me/aljnoubvoice/4"]
         with patch.object(main, "fetch_links", return_value=first):
             selected_first = main.pull_once()
         first_sender = FakeSender()
@@ -62,7 +62,7 @@ class BatchProcessingTests(unittest.TestCase):
         self.assertEqual(sender.calls, second)
 
     def test_no_new_posts_does_not_replay_completed_links(self):
-        batch = ["https://t.me/hasadalyoum/11", "https://t.me/hasadalyoum/12"]
+        batch = ["https://t.me/aljnoubvoice/11", "https://t.me/aljnoubvoice/12"]
         with patch.object(main, "fetch_links", return_value=batch):
             first_selection = main.pull_once()
         sender = FakeSender()
@@ -72,7 +72,7 @@ class BatchProcessingTests(unittest.TestCase):
             self.assertEqual(main.pull_once(), [])
 
     def test_only_unattempted_links_resume_after_fatal_stop(self):
-        batch = [f"https://t.me/hasadalyoum/{number}" for number in (21, 22, 23)]
+        batch = [f"https://t.me/aljnoubvoice/{number}" for number in (21, 22, 23)]
         with patch.object(main, "fetch_links", return_value=batch):
             selected = main.pull_once()
         stopped = FakeSender("fatal")
@@ -87,7 +87,7 @@ class BatchProcessingTests(unittest.TestCase):
         self.assertEqual(resumed.calls, batch[1:])
 
     def test_no_new_links_returns_unattempted_queue_for_fallback_processing(self):
-        batch = ["https://t.me/hasadalyoum/31", "https://t.me/hasadalyoum/32"]
+        batch = ["https://t.me/aljnoubvoice/31", "https://t.me/aljnoubvoice/32"]
         with patch.object(main, "fetch_links", return_value=batch):
             selected = main.pull_once()
         stopped = FakeSender("fatal")
@@ -101,20 +101,25 @@ class BatchProcessingTests(unittest.TestCase):
         self.assertEqual(main.run_browser_send(resumed, fallback), 0)
         self.assertEqual(resumed.calls, [batch[1]])
 
-    def test_previous_links_repeat_until_five_successes_when_no_new_links(self):
-        link = "https://t.me/hasadalyoum/41"
+    def test_previous_links_collect_successes_from_all_five_accounts(self):
+        link = "https://t.me/aljnoubvoice/41"
         with open(os.path.join(self.state, "processed_links.txt"), "w", encoding="utf-8") as file:
             file.write(link + "\n")
+        accounts = [(number, f"u{number}", f"p{number}") for number in range(1, 6)]
 
-        for expected_successes in range(1, 6):
-            sender = FakeSender()
-            self.assertEqual(main.run_previous_links_until_five(sender, self.state), 0)
-            self.assertEqual(sender.calls, [link])
-            self.assertEqual(load_successes(self.state)[link], expected_successes)
+        def all_accounts_succeeded(account, links):
+            return [(selected, "ok") for selected in links]
 
-        finished = FakeSender()
-        self.assertEqual(main.run_previous_links_until_five(finished, self.state), 0)
-        self.assertEqual(finished.calls, [])
+        with patch.object(main, "_send_account", side_effect=all_accounts_succeeded) as send:
+            self.assertEqual(main.run_previous_links_until_five(accounts, self.state), 0)
+            self.assertEqual(send.call_count, 5)
+            self.assertEqual(load_successes(self.state)[link], 5)
+            self.assertEqual(main.run_previous_links_until_five(accounts, self.state), 0)
+            self.assertEqual(load_successes(self.state)[link], 5)
+
+        with patch.object(main, "_send_account") as send:
+            self.assertEqual(main.run_previous_links_until_five(accounts, self.state), 0)
+            send.assert_not_called()
 
 
 if __name__ == "__main__":
